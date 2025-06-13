@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Supplier {
+  id             String          @id @default(uuid())
+  name           String
+  contactName    String? // e.g., “MIGUEL ADRIAN PEREZ VILLANUEVA”
+  contactEmail   String? // e.g., mperez@ariol.com.bo
+  contactPhone   String? // teléfono o fax
+  country        String? // “COUNTRY ORIGIN” o localización del proveedor
+  taxId          String? // NIT u otro identificador fiscal
+  address        String? // dirección del proveedor
+  purchaseOrders PurchaseOrder[] // relación a órdenes de compra
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model PurchaseOrder {
+  id            String              @id @default(uuid())
+  orderNumber   String              @unique
+  version       String?             @default("1.2") // e.g., “1.2”
+  validUntil    DateTime? // Validez (por ejemplo “2018-01-01”)
+  issueDate     DateTime            @default(now()) // FECHA DE EMISIÓN
+  items         PurchaseOrderItem[] // líneas de pedido
+  containerInfo String? // e.g., “1X40 ft CONTAINER”
+  paymentTerms  Decimal[] // e.g., “30% deposit before production, 70% after inspection...”
+  status        PurchaseOrderStatus @default(PENDING)
+
+  supplier   Supplier @relation(fields: [supplierId], references: [id])
+  supplierId String
+
+  incoterm          String? // e.g., “FOB, FUZHOU PORT”
+  referenceProforma String? // referencia a proforma o cotización previa
+
+  deliveryTerms String? // descripción libre de condiciones de entrega
+
+  expectedArrival DateTime? // fecha estimada de llegada
+  actualArrival   DateTime? // fecha real de recepción
+
+  createdBy String // usuario que creó la orden (FK a usuario en auth microservicio; opcional)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PurchaseOrderItem {
+  id              Int           @id @default(autoincrement())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderId String
+
+  productId String // FK al microservicio de Productos; aquí solo referenciamos el ID
+
+  description      String // descripción detallada (modelo & spec)
+  quantityOrdered  Int
+  quantityReceived Int? // para registrar recepción parcial o total
+
+  priceUnit Decimal @db.Decimal(12, 2)
+
+  totalPrice Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum PurchaseOrderStatus {
+  PENDING // creada, pendiente de aprobación o envío
+  APPROVED // aprobada y enviada al proveedor
+  IN_TRANSIT // en camino
+  RECEIVED // completamente recibida
+  CANCELLED // anulada
+}

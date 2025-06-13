@@ -1,0 +1,15 @@
+version: "3"
+
+services:
+
+  imports-database:
+    image: postgres:13.5
+    container_name: imports-database
+    environment:
+      POSTGRES_DB: imports
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports:
+      - '5435:5432'
+    volumes:
+      - ./postgres:/var/lib/postgresql/data
