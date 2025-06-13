@@ -28,4 +28,9 @@ export class ProvidersController {
   update(@Payload() payload: { id: string; updateProviderDto: UpdateProviderDto }) {
     return this.providersService.update(payload.id, payload.updateProviderDto);
   }
+
+  @MessagePattern('seedProviders')
+  seed() {
+    return this.providersService.seed();
+  }
 }

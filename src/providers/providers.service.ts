@@ -4,6 +4,8 @@ import { UpdateProviderDto } from './dto/update-provider.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
 import { RpcException } from '@nestjs/microservices';
+import { providersSeeder } from './seed/providers.seeder';
+
 
 @Injectable()
 export class ProvidersService {
@@ -154,5 +156,28 @@ export class ProvidersService {
         }
       }
     });
+  }
+
+  async seed() {
+    try {      
+      await this.prisma.providerContact.deleteMany({});
+      await this.prisma.provider.deleteMany({});
+  
+      const providerSeederPromise = providersSeeder.map(async (provider) => {
+        this.create(provider)
+      })
+
+      await Promise.all(providerSeederPromise);
+
+      return {
+        message: 'Proveedores sembrados exitosamente',
+      };
+    } catch (error) {
+      console.log(error);
+      throw new RpcException({
+        status: 400,
+        message: 'Error al sembrar los proveedores',
+      });
+    }
   }
 }
