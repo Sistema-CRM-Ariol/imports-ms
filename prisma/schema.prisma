@@ -7,18 +7,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Supplier {
-  id             String          @id @default(uuid())
+model Provider {
+  id             String            @id @default(uuid())
+  code           String            @unique
   name           String
-  contactName    String? // e.g., “MIGUEL ADRIAN PEREZ VILLANUEVA”
-  contactEmail   String? // e.g., mperez@ariol.com.bo
-  contactPhone   String? // teléfono o fax
-  country        String? // “COUNTRY ORIGIN” o localización del proveedor
-  taxId          String? // NIT u otro identificador fiscal
-  address        String? // dirección del proveedor
-  purchaseOrders PurchaseOrder[] // relación a órdenes de compra
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  country        String?
+  taxId          String?
+  address        String?
+
+  // Relaciones
+  contacts       ProviderContact[] // <== Nuevo
+  purchaseOrders PurchaseOrder[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("providers")
+}
+
+model ProviderContact {
+  id         String   @id @default(uuid())
+  fullName   String   // e.g., “Miguel Adrián Pérez Villanueva”
+  email      String?  // contacto directo
+  phone      String?  // puede incluir número internacional
+  position   String?  // cargo (e.g., Gerente de ventas, Asistente de compras)
+
+  provider   Provider @relation(fields: [providerId], references: [id])
+  providerId String
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("providerContacts")
 }
 
 model PurchaseOrder {
@@ -29,14 +49,13 @@ model PurchaseOrder {
   issueDate     DateTime            @default(now()) // FECHA DE EMISIÓN
   items         PurchaseOrderItem[] // líneas de pedido
   containerInfo String? // e.g., “1X40 ft CONTAINER”
-  paymentTerms  Decimal[] // e.g., “30% deposit before production, 70% after inspection...”
+  paymentTerms  String[] // e.g., “30% deposit before production, 70% after inspection...”
   status        PurchaseOrderStatus @default(PENDING)
 
-  supplier   Supplier @relation(fields: [supplierId], references: [id])
-  supplierId String
+  provider   Provider @relation(fields: [providerId], references: [id])
+  providerId String
 
-  incoterm          String? // e.g., “FOB, FUZHOU PORT”
-  referenceProforma String? // referencia a proforma o cotización previa
+  incoterm String? // e.g., “FOB, FUZHOU PORT”
 
   deliveryTerms String? // descripción libre de condiciones de entrega
 
@@ -47,6 +66,8 @@ model PurchaseOrder {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("purchaseOrders") // nombre de tabla en la base de datos
 }
 
 model PurchaseOrderItem {
@@ -64,8 +85,12 @@ model PurchaseOrderItem {
 
   totalPrice Decimal @db.Decimal(12, 2)
 
+  currency String // e.g., "USD", "EUR"
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@map("purchaseOrderItems") // nombre de tabla en la base de datos
 }
 
 enum PurchaseOrderStatus {

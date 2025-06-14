@@ -3,6 +3,7 @@ import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ImportsService } from './imports.service';
 import { CreateImportDto } from './dto/create-import.dto';
 import { UpdateImportDto } from './dto/update-import.dto';
+import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
 
 @Controller()
 export class ImportsController {
@@ -14,8 +15,8 @@ export class ImportsController {
   }
 
   @MessagePattern('findAllImports')
-  findAll() {
-    return this.importsService.findAll();
+  findAll(@Payload() filterPaginationDto: FilterPaginationDto) {
+    return this.importsService.findAll(filterPaginationDto);
   }
 
   @MessagePattern('findOneImport')
