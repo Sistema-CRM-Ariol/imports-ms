@@ -25,8 +25,9 @@ export class ImportsController {
   }
 
   @MessagePattern('updateImport')
-  update(@Payload() updateImportDto: UpdateImportDto) {
-    return this.importsService.update(updateImportDto.id, updateImportDto);
+  update(@Payload() payload: {id: string, updateImportDto: UpdateImportDto}) {
+    console.log(payload)
+    return this.importsService.update(payload.id, payload.updateImportDto);
   }
 
   @MessagePattern('removeImport')

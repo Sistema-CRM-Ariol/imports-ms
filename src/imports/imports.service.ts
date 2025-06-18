@@ -3,7 +3,7 @@ import { CreateImportDto } from './dto/create-import.dto';
 import { UpdateImportDto } from './dto/update-import.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
-import { ClientProxy } from '@nestjs/microservices';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
 import { NATS_SERVICE } from 'src/config/services';
 import { firstValueFrom } from 'rxjs';
 import { GetProductsByIdsResponse } from 'src/common/interfaces/get-products-by-ids-response.interface';
@@ -29,34 +29,13 @@ export class ImportsService {
       throw new NotFoundException('Proveedor no encontrado');
     }
 
-    // const products = await firstValueFrom<GetProductsByIdsResponse[]>(
-    //   this.natsClient.send('findProductsByIds', items?.map(item => item.productId)
-    //   ));
-
-    // const productItems = items?.map(item => {
-    //   // Buscar el producto en el array obtenido por NATS
-    //   const prod = products.find(p => p.id === item.productId);
-    //   if (!prod) {
-    //     // Si no se encuentra el producto, lanzar excepción
-    //     throw new NotFoundException(`Producto con id ${item.productId} no encontrado`);
-    //   }
-    //   // Retornar objeto para Prisma. Ajusta los campos según tu schema de Prisma:
-    //   return {
-    //     productName: prod.name,
-    //     ...item
-    //   };
-    // });
-
-    // 2. Calcular secuencia de orden para este proveedor en el año en curso
     const now = new Date();
     const year = now.getFullYear();
-    const yearSuffix = String(year).slice(-2); // últimos dos dígitos del año, e.g., "25"
+    const yearSuffix = String(year).slice(-2);
 
-    // Rango para el año actual: desde 1 de enero a 1 de enero del siguiente año
     const startOfYear = new Date(year, 0, 1);
     const startNextYear = new Date(year + 1, 0, 1);
 
-    // 3. Ejecutar conteo dentro de transacción simple
     try {
       const [existingCount] = await this.prisma.$transaction([
         this.prisma.purchaseOrder.count({
@@ -157,12 +136,108 @@ export class ImportsService {
     };
   }
 
-  findOne(id: string) {
-    return `This action returns a #${id} import`;
+  async findOne(id: string) {
+
+    const purchaseOrder = await this.prisma.purchaseOrder.findUnique({
+      where: { id },
+
+      include: {
+        items: true,
+        provider: {
+          select: {
+            name: true,
+          },
+        },
+        
+      },
+    });
+    
+    return {
+      purchaseOrder,
+    }
+  
   }
 
-  update(id: string, updateImportDto: UpdateImportDto) {
-    return `This action updates a #${id} import`;
+  async update(id: string, updateImportDto: UpdateImportDto) {
+    const { items, ...purchaseOrderData } = updateImportDto;
+
+
+    const updatedOrder = await this.prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        ...purchaseOrderData,
+        items: {
+          create: items, // asume que 'items' es un array con shape { productId, quantity, unitPrice, ... } coincidente con tu modelo Prisma
+        },
+      },
+      include: {
+        items: true,
+      },
+    });
+
+
+
+    // 2. Verificar el estado de la orden
+    if (purchaseOrderData.status === 'RECEIVED') {
+      // 3. Actualizar stock del inventario de ese almacén
+      const warehouseId = updatedOrder.warehouseId;
+
+      if (!warehouseId) {
+        console.error(`Orden ${id} tiene estado RECEIVED pero no tiene warehouseId`);
+        throw new RpcException({
+          message: 'warehouseId no definido en la orden, no se puede actualizar inventario',
+          status: 400,
+        });
+      }
+
+      for (const item of updatedOrder.items) {
+        console.log({ item })
+
+        const { productId, quantityOrdered } = item;
+
+        if (quantityOrdered == null) {
+          console.warn(`Item en orden ${id} sin quantity definido: producto ${productId}, se omite ajuste`);
+          continue;
+        }
+
+        try {
+          const response = await firstValueFrom(
+            this.natsClient.send('adjustInventory', {
+              productId,
+              warehouseId,
+              quantityOrdered,
+            }),
+          );
+          // Opcional: verificar response.success o similar
+          if (!response || response.success === false) {
+            console.error(`Falló ajuste en Inventario (respuesta negativa) para productId=${productId}, warehouseId=${warehouseId}`);
+            // Decide si lanzar o continuar
+            throw new Error('Inventario no ajustado correctamente');
+          }
+          console.log(`Ajuste de inventario exitoso: productId=${productId}, warehouseId=${warehouseId}, quantity=${quantityOrdered}`);
+
+          await this.prisma.purchaseOrder.update({
+            where: { id },
+            data: {
+              actualArrival: new Date(),
+            } // Asumimos que se actualiza la fecha de llegada real al recibir la orden
+          });
+
+
+        } catch (err) {
+          console.error(`Error ajustando inventario para productId=${productId}, warehouseId=${warehouseId}`, err);
+          // Dependiendo de tu lógica de negocio, podrías:
+          // - Lanzar excepción para abortar completamente:
+          throw new InternalServerErrorException(`Error al ajustar inventario para productId=${productId}`);
+          // - O bien: almacenar en una tabla de “ajustes pendientes” para reintento posterior.
+        }
+      }
+    }
+
+    return {
+      message: 'Orden de compra actualizada correctamente',
+      order: updatedOrder, // opcional retornar data actualizada
+    };
   }
 
   remove(id: string) {
