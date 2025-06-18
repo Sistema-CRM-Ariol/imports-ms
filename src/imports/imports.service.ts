@@ -1,14 +1,19 @@
-import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { CreateImportDto } from './dto/create-import.dto';
 import { UpdateImportDto } from './dto/update-import.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
+import { ClientProxy } from '@nestjs/microservices';
+import { NATS_SERVICE } from 'src/config/services';
+import { firstValueFrom } from 'rxjs';
+import { GetProductsByIdsResponse } from 'src/common/interfaces/get-products-by-ids-response.interface';
 
 @Injectable()
 export class ImportsService {
 
   constructor(
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(NATS_SERVICE) private readonly natsClient: ClientProxy,
   ) { }
 
   async create(createImportDto: CreateImportDto) {
@@ -23,6 +28,24 @@ export class ImportsService {
     if (!provider) {
       throw new NotFoundException('Proveedor no encontrado');
     }
+
+    // const products = await firstValueFrom<GetProductsByIdsResponse[]>(
+    //   this.natsClient.send('findProductsByIds', items?.map(item => item.productId)
+    //   ));
+
+    // const productItems = items?.map(item => {
+    //   // Buscar el producto en el array obtenido por NATS
+    //   const prod = products.find(p => p.id === item.productId);
+    //   if (!prod) {
+    //     // Si no se encuentra el producto, lanzar excepción
+    //     throw new NotFoundException(`Producto con id ${item.productId} no encontrado`);
+    //   }
+    //   // Retornar objeto para Prisma. Ajusta los campos según tu schema de Prisma:
+    //   return {
+    //     productName: prod.name,
+    //     ...item
+    //   };
+    // });
 
     // 2. Calcular secuencia de orden para este proveedor en el año en curso
     const now = new Date();
@@ -55,9 +78,7 @@ export class ImportsService {
       const purchaseOrder = await this.prisma.purchaseOrder.create({
         data: {
           ...purchaseOrderData,
-          orderNumber,      // asigna el field orderNumber
-          // Si tu modelo Prisma tiene también un campo `code` separado, considera asignarlo igual:
-          // code: orderNumber,
+          orderNumber,
           items: {
             create: items,
           }
@@ -69,10 +90,10 @@ export class ImportsService {
 
       return purchaseOrder;
     } catch (error) {
+
       console.log(error)
-      // Manejo de error genérico
-      // Podrías refinar según error.code de Prisma para unicidad u otros casos
       throw new InternalServerErrorException('Error al crear la orden de compra');
+
     }
 
   }

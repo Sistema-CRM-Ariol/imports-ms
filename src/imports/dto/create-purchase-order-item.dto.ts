@@ -14,6 +14,10 @@ export class CreatePurchaseOrderItemDto {
     @IsNotEmpty({ message: 'El campo productId es obligatorio' })
     productId: string;
 
+    @IsString()
+    @IsNotEmpty({ message: 'El nombre del producto es obligatorio' })
+    productName: string;
+
     @IsString({ message: 'La descripción del ítem debe ser un texto' })
     @IsNotEmpty({ message: 'La descripción del ítem es obligatoria' })
     description: string;

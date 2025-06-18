@@ -45,11 +45,8 @@ model PurchaseOrder {
   id            String              @id @default(uuid())
   orderNumber   String              @unique
   version       String?             @default("1.2") // e.g., “1.2”
-  validUntil    DateTime? // Validez (por ejemplo “2018-01-01”)
   issueDate     DateTime            @default(now()) // FECHA DE EMISIÓN
   items         PurchaseOrderItem[] // líneas de pedido
-  containerInfo String? // e.g., “1X40 ft CONTAINER”
-  paymentTerms  String[] // e.g., “30% deposit before production, 70% after inspection...”
   status        PurchaseOrderStatus @default(PENDING)
 
   provider   Provider @relation(fields: [providerId], references: [id])
@@ -57,12 +54,14 @@ model PurchaseOrder {
 
   incoterm String? // e.g., “FOB, FUZHOU PORT”
 
-  deliveryTerms String? // descripción libre de condiciones de entrega
 
   expectedArrival DateTime? // fecha estimada de llegada
   actualArrival   DateTime? // fecha real de recepción
 
-  createdBy String // usuario que creó la orden (FK a usuario en auth microservicio; opcional)
+  createdBy String? // usuario que creó la orden (FK a usuario en auth microservicio; opcional)
+
+  warehouseId String? // FK al microservicio de Almacenes; opcional, si aplica
+  warehouseName String? // nombre del almacén, si aplica
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -76,6 +75,7 @@ model PurchaseOrderItem {
   purchaseOrderId String
 
   productId String // FK al microservicio de Productos; aquí solo referenciamos el ID
+  productName String // nombre del producto (puede ser un SKU o descripción breve)
 
   description      String // descripción detallada (modelo & spec)
   quantityOrdered  Int

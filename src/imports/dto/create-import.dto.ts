@@ -14,25 +14,12 @@ export class CreateImportDto{
     version?: string;
 
     @IsOptional()
-    @IsDateString({}, { message: 'validUntil debe ser una fecha válida en formato ISO 8601' })
-    validUntil?: string;
-
-    @IsOptional()
     @IsDateString({}, { message: 'issueDate debe ser una fecha válida en formato ISO 8601' })
     issueDate?: string; // si prefieres que se autogenere, puedes omitirlo del DTO y usar default en el servicio
 
     @IsUUID('4', { message: 'El ID del proveedor debe ser un UUID válido' })
     @IsNotEmpty({ message: 'El campo providerId es obligatorio' })
     providerId: string;
-
-    @IsOptional()
-    @IsString({ message: 'containerInfo debe ser un texto' })
-    containerInfo?: string;
-
-    @IsOptional()
-    @IsArray({ message: 'paymentTerms debe ser un arreglo de textos' })
-    @IsString({ each: true, message: 'Cada término de pago debe ser un texto' })
-    paymentTerms?: string[];
 
     @IsEnum(PurchaseOrderStatus, {
         message: 'El estado debe ser uno de: PENDING, APPROVED, IN_TRANSIT, RECEIVED, CANCELLED',
@@ -45,10 +32,6 @@ export class CreateImportDto{
     incoterm?: string;
 
     @IsOptional()
-    @IsString({ message: 'deliveryTerms debe ser un texto' })
-    deliveryTerms?: string;
-
-    @IsOptional()
     @IsDateString({}, { message: 'expectedArrival debe ser una fecha válida ISO 8601' })
     expectedArrival?: string;
 
@@ -59,6 +42,10 @@ export class CreateImportDto{
     @IsUUID('4', { message: 'createdBy debe ser un UUID válido' })
     @IsOptional()
     createdBy: string;
+
+    @IsUUID('4', { message: 'El almacén debe ser un UUID válido' })
+    warehouseId: string;
+
 
     @IsArray({ message: 'items debe ser un arreglo de ítems' })
     @ValidateNested({ each: true })
