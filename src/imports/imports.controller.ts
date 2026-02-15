@@ -7,31 +7,20 @@ import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
 
 @Controller()
 export class ImportsController {
-  constructor(private readonly importsService: ImportsService) {}
+    constructor(private readonly importsService: ImportsService) { }
 
-  @MessagePattern('createImport')
-  create(@Payload() createImportDto: CreateImportDto) {
-    return this.importsService.create(createImportDto);
-  }
+    @MessagePattern('imports.create')
+    create(@Payload() createImportDto: CreateImportDto) {
+        return this.importsService.create(createImportDto);
+    }
 
-  @MessagePattern('findAllImports')
-  findAll(@Payload() filterPaginationDto: FilterPaginationDto) {
-    return this.importsService.findAll(filterPaginationDto);
-  }
+    @MessagePattern('imports.findAll')
+    findAll(@Payload() filterPaginationDto: FilterPaginationDto) {
+        return this.importsService.findAll(filterPaginationDto);
+    }
 
-  @MessagePattern('findOneImport')
-  findOne(@Payload() id: string) {
-    return this.importsService.findOne(id);
-  }
-
-  @MessagePattern('updateImport')
-  update(@Payload() payload: {id: string, updateImportDto: UpdateImportDto}) {
-    console.log(payload)
-    return this.importsService.update(payload.id, payload.updateImportDto);
-  }
-
-  @MessagePattern('removeImport')
-  remove(@Payload() id: string) {
-    return this.importsService.remove(id);
-  }
+    @MessagePattern('imports.findOne')
+    findOne(@Payload() orderNumber: string) {
+        return this.importsService.findOne(orderNumber);
+    }
 }

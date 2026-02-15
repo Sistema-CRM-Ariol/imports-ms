@@ -1,102 +1,60 @@
 generator client {
-  provider = "prisma-client-js"
+    provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
 }
 
-model Provider {
-  id             String            @id @default(uuid())
-  code           String            @unique
-  name           String
-  country        String?
-  taxId          String?
-  address        String?
+model ImportOrder {
+    id              String            @id @default(uuid())
+    orderNumber     String            @unique
+    
+    issueDate       DateTime          @default(now())
+    expectedArrival DateTime?
+    actualArrival   DateTime?
+    
+    providerId      String
+    providerName    String?           // Desnormalizado para referencia rápida
+    incoterm        String?
+    
+    status          ImportOrderStatus @default(Pendiente)
+    items           ImportOrderItem[]
+    
+    warehouseId     String            // ID del almacén donde se recibirá 
+    warehouseName   String?           // Desnormalizado para referencia rápida
+    
+    createdAt       DateTime          @default(now())
+    updatedAt       DateTime          @updatedAt
 
-  // Relaciones
-  contacts       ProviderContact[] // <== Nuevo
-  purchaseOrders PurchaseOrder[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("providers")
+    @@map("import_orders")
 }
 
-model ProviderContact {
-  id         String   @id @default(uuid())
-  fullName   String   // e.g., “Miguel Adrián Pérez Villanueva”
-  email      String?  // contacto directo
-  phone      String?  // puede incluir número internacional
-  position   String?  // cargo (e.g., Gerente de ventas, Asistente de compras)
+model ImportOrderItem {
+    id              Int         @id @default(autoincrement())
+    importOrderId   String
+    importOrder     ImportOrder @relation(fields: [importOrderId], references: [id], onDelete: Cascade)
+    
+    productId       String
+    productName     String
+    
+    quantityOrdered  Int
+    quantityReceived Int?       @default(0)
+    
+    priceUnit       Decimal     @db.Decimal(12, 2)
+    currency        String      @default("USD")
+    
+    createdAt       DateTime    @default(now())
+    updatedAt       DateTime    @updatedAt
 
-  provider   Provider @relation(fields: [providerId], references: [id])
-  providerId String
-
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  @@map("providerContacts")
+    @@map("import_order_items")
 }
 
-model PurchaseOrder {
-  id            String              @id @default(uuid())
-  orderNumber   String              @unique
-  version       String?             @default("1.2") // e.g., “1.2”
-  issueDate     DateTime            @default(now()) // FECHA DE EMISIÓN
-  items         PurchaseOrderItem[] // líneas de pedido
-  status        PurchaseOrderStatus @default(PENDING)
-
-  provider   Provider @relation(fields: [providerId], references: [id])
-  providerId String
-
-  incoterm String? // e.g., “FOB, FUZHOU PORT”
-
-
-  expectedArrival DateTime? // fecha estimada de llegada
-  actualArrival   DateTime? // fecha real de recepción
-
-  createdBy String? // usuario que creó la orden (FK a usuario en auth microservicio; opcional)
-
-  warehouseId String? // FK al microservicio de Almacenes; opcional, si aplica
-  warehouseName String? // nombre del almacén, si aplica
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("purchaseOrders") // nombre de tabla en la base de datos
-}
-
-model PurchaseOrderItem {
-  id              Int           @id @default(autoincrement())
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  purchaseOrderId String
-
-  productId String // FK al microservicio de Productos; aquí solo referenciamos el ID
-  productName String // nombre del producto (puede ser un SKU o descripción breve)
-
-  description      String // descripción detallada (modelo & spec)
-  quantityOrdered  Int
-  quantityReceived Int? // para registrar recepción parcial o total
-
-  priceUnit Decimal @db.Decimal(12, 2)
-
-  totalPrice Decimal @db.Decimal(12, 2)
-
-  currency String // e.g., "USD", "EUR"
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("purchaseOrderItems") // nombre de tabla en la base de datos
-}
-
-enum PurchaseOrderStatus {
-  PENDING // creada, pendiente de aprobación o envío
-  APPROVED // aprobada y enviada al proveedor
-  IN_TRANSIT // en camino
-  RECEIVED // completamente recibida
-  CANCELLED // anulada
+enum ImportOrderStatus {
+    Pendiente
+    Cursando   
+    Recibido
+    Cancelado
+    Completado
 }
