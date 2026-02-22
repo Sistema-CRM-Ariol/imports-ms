@@ -9,6 +9,11 @@ import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
 export class ImportsController {
     constructor(private readonly importsService: ImportsService) { }
 
+    @MessagePattern('imports.stats')
+    getStats() {
+        return this.importsService.getStats();
+    }
+
     @MessagePattern('imports.create')
     create(@Payload() createImportDto: CreateImportDto) {
         return this.importsService.create(createImportDto);

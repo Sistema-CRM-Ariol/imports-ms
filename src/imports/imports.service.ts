@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CreateImportDto } from './dto/create-import.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
@@ -9,10 +9,86 @@ import { ImportOrderStatus } from '@prisma/client';
 @Injectable()
 export class ImportsService {
 
+    private readonly logger = new Logger('ImportsService');
+
     constructor(
         private readonly prisma: PrismaService,
         @Inject(NATS_SERVICE) private readonly natsClient: ClientProxy,
     ) { }
+
+    // ─── Dashboard Stats ────────────────────────────────────────────
+    async getStats() {
+
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        const [
+            totalImports,
+            inTransit,
+            pending,
+            delivered,
+            cancelled,
+            monthItems,
+            openPurchaseOrders,
+        ] = await Promise.all([
+            this.prisma.importOrder.count(),
+            this.prisma.importOrder.count({
+                where: { status: ImportOrderStatus.Cursando },
+            }),
+            this.prisma.importOrder.count({
+                where: { status: ImportOrderStatus.Pendiente },
+            }),
+            this.prisma.importOrder.count({
+                where: {
+                    status: { in: [ImportOrderStatus.Recibido, ImportOrderStatus.Completado] },
+                },
+            }),
+            this.prisma.importOrder.count({
+                where: { status: ImportOrderStatus.Cancelado },
+            }),
+            // Valor total importado en el mes: sumamos priceUnit * quantityOrdered de los items
+            this.prisma.importOrderItem.findMany({
+                where: {
+                    importOrder: {
+                        createdAt: { gte: startOfMonth },
+                    },
+                },
+                select: {
+                    priceUnit: true,
+                    quantityOrdered: true,
+                    currency: true,
+                },
+            }),
+            // Órdenes de compra abiertas (no completadas ni canceladas)
+            this.prisma.importOrder.count({
+                where: {
+                    status: {
+                        notIn: [ImportOrderStatus.Completado, ImportOrderStatus.Cancelado],
+                    },
+                },
+            }),
+        ]);
+
+        // Calcular valor total importado en el mes por moneda
+        const totalImportedValueUSD = monthItems
+            .filter(item => item.currency === 'USD')
+            .reduce((sum, item) => sum + Number(item.priceUnit) * item.quantityOrdered, 0);
+
+        const totalImportedValueBOB = monthItems
+            .filter(item => item.currency === 'BOB')
+            .reduce((sum, item) => sum + Number(item.priceUnit) * item.quantityOrdered, 0);
+
+        return {
+            totalImports,
+            inTransit,
+            pending,
+            delivered,
+            cancelled,
+            totalImportedValueUSD: parseFloat(totalImportedValueUSD.toFixed(2)),
+            totalImportedValueBOB: parseFloat(totalImportedValueBOB.toFixed(2)),
+            openPurchaseOrders,
+        };
+    }
 
     async create(createImportDto: CreateImportDto) {
 
