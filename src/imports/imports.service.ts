@@ -2,7 +2,8 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CreateImportDto } from './dto/create-import.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
-import { ClientProxy } from '@nestjs/microservices';
+import { ClientProxy, RpcException } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
 import { NATS_SERVICE } from 'src/config/services';
 import { ImportOrderStatus } from '@prisma/client';
 
@@ -103,8 +104,54 @@ export class ImportsService {
                 items: {
                     create: items, // asume que 'items' es un array con shape { productId, quantityOrdered, priceUnit, ... } coincidente con tu modelo Prisma
                 },
-            }
+            },
+            include: {
+                items: {
+                    select: {
+                        productId: true,
+                        productName: true,
+                        quantityOrdered: true,
+                        quantityReceived: true,
+                    },
+                },
+            },
         });
+
+        try {
+            const inventoryItems = this.mapImportItemsForInventory(newImport.items);
+
+            await firstValueFrom(
+                this.natsClient.send('inventories.operations.apply', {
+                    operationType: 'IMPORTACION',
+                    action: 'INGRESAR',
+                    referenceId: newImport.orderNumber,
+                    referenceType: 'IMPORTACION',
+                    sourceService: 'imports-ms',
+                    warehouseId: newImport.warehouseId,
+                    warehouseName: newImport.warehouseName,
+                    userId: 'system',
+                    userName: 'system',
+                    notes: 'Ingreso de stock por generacion de importacion',
+                    items: inventoryItems,
+                }),
+            );
+        } catch (error) {
+            const typedError = error as any;
+
+            await this.prisma.importOrder.delete({
+                where: { id: newImport.id },
+            });
+
+            throw new RpcException({
+                status: 400,
+                message:
+                    typedError?.message
+                    ?? typedError?.response?.message
+                    ?? 'No se pudo aplicar inventario al crear la importacion',
+            });
+        }
+
+        this.logger.log(`Stock incrementado para importacion ${orderNumber} al crear orden`);
 
         return {
             message: 'Orden de importación creada correctamente',
@@ -186,30 +233,109 @@ export class ImportsService {
     }
 
     async changeStatus(orderNumber: string, newStatus: ImportOrderStatus) {
+        const existingImport = await this.prisma.importOrder.findUnique({
+            where: { orderNumber },
+            select: {
+                status: true,
+            },
+        });
+
+        if (!existingImport) {
+            throw new RpcException({
+                status: 404,
+                message: `Orden de importacion ${orderNumber} no encontrada`,
+            });
+        }
+
+        if (existingImport.status === newStatus) {
+            const importOrder = await this.prisma.importOrder.findUnique({
+                where: { orderNumber },
+                include: {
+                    items: {
+                        select: {
+                            productId: true,
+                            productName: true,
+                            quantityOrdered: true,
+                            quantityReceived: true,
+                        },
+                    },
+                },
+            });
+
+            return {
+                message: 'El estado ya se encuentra actualizado',
+                import: importOrder,
+            };
+        }
+
         const updatedImport = await this.prisma.importOrder.update({
             where: { orderNumber },
             data: { status: newStatus },
             include: {
                 items: {
-                    select: { productId: true, quantityReceived: true, quantityOrdered: true }
-                }
-            }
+                    select: {
+                        productId: true,
+                        productName: true,
+                        quantityReceived: true,
+                        quantityOrdered: true,
+                    },
+                },
+            },
         });
 
-        if( newStatus === ImportOrderStatus.Completado ) {
-            this.natsClient.emit('inventories.updateSock', {
-                warehouseId: updatedImport.warehouseId,
-                items: updatedImport.items.map(item => ({
-                    productId: item.productId,
-                    quantity: item.quantityReceived ?? item.quantityOrdered, // si no se ha recibido nada, asumimos que se recibe todo lo ordenado
-                }))
-            });
+        if (existingImport.status !== ImportOrderStatus.Completado && newStatus === ImportOrderStatus.Completado) {
+            const inventoryItems = this.mapImportItemsForInventory(updatedImport.items);
+
+            await firstValueFrom(
+                this.natsClient.send('inventories.operations.apply', {
+                    operationType: 'IMPORTACION',
+                    action: 'INGRESAR',
+                    referenceId: updatedImport.orderNumber,
+                    referenceType: 'IMPORTACION',
+                    sourceService: 'imports-ms',
+                    warehouseId: updatedImport.warehouseId,
+                    warehouseName: updatedImport.warehouseName,
+                    userId: 'system',
+                    userName: 'system',
+                    notes: 'Ingreso de stock por importacion completada',
+                    items: inventoryItems,
+                }),
+            );
+
+            this.logger.log(`Stock incrementado para importacion ${orderNumber}`);
         }
 
         return {
             message: 'Estado de importación actualizado correctamente',
             import: updatedImport,
         };
+    }
+
+    private mapImportItemsForInventory(
+        items: Array<{
+            productId: string;
+            productName: string;
+            quantityOrdered: number;
+            quantityReceived: number | null;
+        }>,
+    ) {
+        return items
+            .map(item => {
+                const quantityReceived = Number(item.quantityReceived ?? 0);
+                const quantityOrdered = Number(item.quantityOrdered ?? 0);
+
+                // En creación, quantityReceived suele venir en 0; usamos quantityOrdered como fallback.
+                const quantity = Math.trunc(
+                    Math.abs(quantityReceived > 0 ? quantityReceived : quantityOrdered),
+                );
+
+                return {
+                    productId: item.productId,
+                    productName: item.productName,
+                    quantity,
+                };
+            })
+            .filter(item => Number.isFinite(item.quantity) && item.quantity > 0);
     }
 
 }

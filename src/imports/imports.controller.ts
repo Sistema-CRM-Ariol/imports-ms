@@ -4,6 +4,7 @@ import { ImportsService } from './imports.service';
 import { CreateImportDto } from './dto/create-import.dto';
 import { UpdateImportDto } from './dto/update-import.dto';
 import { FilterPaginationDto } from 'src/common/dto/filter-pagination.dto';
+import { ImportOrderStatus } from './types/import-ordes-status.type';
 
 @Controller()
 export class ImportsController {
@@ -27,5 +28,10 @@ export class ImportsController {
     @MessagePattern('imports.findOne')
     findOne(@Payload() orderNumber: string) {
         return this.importsService.findOne(orderNumber);
+    }
+
+    @MessagePattern('imports.changeStatus')
+    changeStatus(@Payload() payload: { orderNumber: string; status: ImportOrderStatus }) {
+        return this.importsService.changeStatus(payload.orderNumber, payload.status);
     }
 }
